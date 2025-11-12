@@ -16,14 +16,15 @@ class FetchEuroleagueStats extends Command
                             {season=E2025 : The season code (e.g., E2025)}
                             {--start=1 : Starting game code}
                             {--end=100 : Ending game code}
-                            {--game= : Fetch a specific game code}';
+                            {--game= : Fetch a specific game code}
+                            {--force : Force reload existing games}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch and store Euroleague game statistics from the API';
+    protected $description = 'Fetch and store Euroleague game statistics from the API (use --force to reload existing games)';
 
     /**
      * Execute the console command.
@@ -32,12 +33,13 @@ class FetchEuroleagueStats extends Command
     {
         $seasonCode = $this->argument('season');
         $specificGame = $this->option('game');
+        $force = $this->option('force');
 
         if ($specificGame) {
             // Fetch a specific game
-            $this->info("Fetching game {$specificGame} for season {$seasonCode}...");
+            $this->info("Fetching game {$specificGame} for season {$seasonCode}..." . ($force ? " (FORCE MODE)" : ""));
 
-            $success = $service->fetchAndStoreGame((int)$specificGame, $seasonCode);
+            $success = $service->fetchAndStoreGame((int)$specificGame, $seasonCode, $force);
 
             if ($success) {
                 $this->info("✓ Successfully fetched and stored game {$specificGame}");
@@ -52,7 +54,7 @@ class FetchEuroleagueStats extends Command
         $start = (int)$this->option('start');
         $end = (int)$this->option('end');
 
-        $this->info("Fetching games {$start} to {$end} for season {$seasonCode}...");
+        $this->info("Fetching games {$start} to {$end} for season {$seasonCode}..." . ($force ? " (FORCE MODE - Reloading existing games)" : ""));
 
         $progressBar = $this->output->createProgressBar($end - $start + 1);
         $progressBar->start();
@@ -60,8 +62,8 @@ class FetchEuroleagueStats extends Command
         $results = ['success' => 0, 'failed' => 0, 'skipped' => 0];
 
         for ($gameCode = $start; $gameCode <= $end; $gameCode++) {
-            // Check if game already exists
-            if (\App\Models\Game::where('game_code', $gameCode)
+            // Check if game already exists (skip only if not forcing)
+            if (!$force && \App\Models\Game::where('game_code', $gameCode)
                 ->where('season_code', $seasonCode)
                 ->exists()) {
                 $results['skipped']++;
@@ -69,7 +71,7 @@ class FetchEuroleagueStats extends Command
                 continue;
             }
 
-            $success = $service->fetchAndStoreGame($gameCode, $seasonCode);
+            $success = $service->fetchAndStoreGame($gameCode, $seasonCode, $force);
 
             if ($success) {
                 $results['success']++;

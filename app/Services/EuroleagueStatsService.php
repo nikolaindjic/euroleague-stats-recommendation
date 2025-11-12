@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\Position;
 use App\Models\Game;
 use App\Models\Player;
 use App\Models\PlayerGameStat;
@@ -19,12 +20,12 @@ class EuroleagueStatsService
     /**
      * Fetch and store game data for a specific game
      */
-    public function fetchAndStoreGame(int $gameCode, string $seasonCode): bool
+    public function fetchAndStoreGame(int $gameCode, string $seasonCode, bool $force = false): bool
     {
         try {
             $url = self::API_BASE_URL . "?gamecode={$gameCode}&seasoncode={$seasonCode}";
 
-            Log::info("Fetching game data", ['game_code' => $gameCode, 'season_code' => $seasonCode]);
+            Log::info("Fetching game data", ['game_code' => $gameCode, 'season_code' => $seasonCode, 'force' => $force]);
 
             $response = Http::timeout(30)->get($url);
 
@@ -40,7 +41,7 @@ class EuroleagueStatsService
                 return false;
             }
 
-            $this->processAndStoreGameData($gameCode, $seasonCode, $data);
+            $this->processAndStoreGameData($gameCode, $seasonCode, $data, $force);
 
             Log::info("Successfully stored game data", ['game_code' => $gameCode]);
             return true;
@@ -91,9 +92,9 @@ class EuroleagueStatsService
     /**
      * Process and store game data in the database
      */
-    private function processAndStoreGameData(int $gameCode, string $seasonCode, array $data): void
+    private function processAndStoreGameData(int $gameCode, string $seasonCode, array $data, bool $force = false): void
     {
-        DB::transaction(function () use ($gameCode, $seasonCode, $data) {
+        DB::transaction(function () use ($gameCode, $seasonCode, $data, $force) {
             // Create or update game
             $round = (int) ceil($gameCode / 10);
             $game = Game::updateOrCreate(
@@ -105,6 +106,13 @@ class EuroleagueStatsService
                     'attendance' => $data['Attendance'] ?? null,
                 ]
             );
+
+            // If force mode, delete all existing team and player stats for this game
+            if ($force) {
+                Log::info("Force mode: Deleting existing stats for game", ['game_id' => $game->id, 'game_code' => $gameCode]);
+                TeamGameStat::where('game_id', $game->id)->delete();
+                PlayerGameStat::where('game_id', $game->id)->delete();
+            }
 
             // Process both teams
             foreach ($data['Stats'] as $teamData) {
@@ -184,6 +192,11 @@ class EuroleagueStatsService
         // Fetch position from player API if not already set
         $position = $this->fetchPlayerPosition($playerId);
 
+        // If API didn't return position, try to normalize from playerData
+        if (!$position && isset($playerData['Position'])) {
+            $position = $this->normalizePosition($playerData['Position']);
+        }
+
         // Create or get player
         $player = Player::firstOrCreate(
             ['player_id' => $playerId],
@@ -207,7 +220,7 @@ class EuroleagueStatsService
             [
                 'team_id' => $team->id,
                 'dorsal' => $playerData['Dorsal'] ?? null,
-                'position' => $position ?? $playerData['Position'] ?? null,
+                'position' => $position ?? $player->position,
                 'is_starter' => (bool)($playerData['IsStarter'] ?? false),
                 'is_playing' => (bool)($playerData['IsPlaying'] ?? false),
                 'minutes' => $playerData['Minutes'] ?? null,
@@ -287,9 +300,11 @@ class EuroleagueStatsService
 
             if ($position) {
                 Log::debug("Fetched position for player", ['player_id' => $playerId, 'position' => $position]);
+                // Normalize the position to our standard format
+                return $this->normalizePosition($position);
             }
 
-            return $position;
+            return null;
 
         } catch (\Exception $e) {
             Log::debug("Error fetching player position", [
@@ -298,6 +313,42 @@ class EuroleagueStatsService
             ]);
             return null;
         }
+    }
+
+    /**
+     * Normalize position string to standard format (G, F, or C)
+     */
+    private function normalizePosition(?string $position): ?string
+    {
+        if (!$position) {
+            return null;
+        }
+
+        $position = strtoupper(trim($position));
+
+        // Check for Guard variations
+        if (preg_match('/\b(G|GUARD|PG|SG|POINT|SHOOTING)\b/i', $position)) {
+            return Position::GUARD;
+        }
+
+        // Check for Forward variations
+        if (preg_match('/\b(F|FORWARD|SF|PF|SMALL|POWER)\b/i', $position)) {
+            return Position::FORWARD;
+        }
+
+        // Check for Center variations
+        if (preg_match('/\b(C|CENTER|CENTRE)\b/i', $position)) {
+            return Position::CENTER;
+        }
+
+        // If it's already one of our standard positions, return it
+        if (in_array($position, Position::all())) {
+            return $position;
+        }
+
+        // Default to null if we can't determine the position
+        Log::debug("Unable to normalize position", ['position' => $position]);
+        return null;
     }
 }
 

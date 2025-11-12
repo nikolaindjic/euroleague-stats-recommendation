@@ -59,6 +59,10 @@
                            class="inline-flex items-center px-1 pt-1 border-b-2 {{ request()->routeIs('stats.vs-position') ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-white' }} text-sm font-medium transition-colors">
                             Defense vs Position
                         </a>
+                        <a href="{{ route('stats.form-recommendations') }}"
+                           class="inline-flex items-center px-1 pt-1 border-b-2 {{ request()->routeIs('stats.form-recommendations') ? 'border-indigo-500 text-gray-900 dark:text-white' : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 hover:text-gray-700 dark:hover:text-white' }} text-sm font-medium transition-colors">
+                            🎯 Recommendations
+                        </a>
                     </div>
                 </div>
 
@@ -89,6 +93,10 @@
             <a href="{{ route('stats.vs-position') }}"
                class="block px-3 py-2 rounded-md text-base font-medium {{ request()->routeIs('stats.vs-position') ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white' }} transition-colors">
                 Defense vs Position
+            </a>
+            <a href="{{ route('stats.form-recommendations') }}"
+               class="block px-3 py-2 rounded-md text-base font-medium {{ request()->routeIs('stats.form-recommendations') ? 'bg-indigo-50 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white' }} transition-colors">
+                🎯 Recommendations
             </a>
         </div>
     </nav>
@@ -147,5 +155,8 @@
             }
         });
     </script>
+
+    <!-- Page-specific scripts -->
+    @stack('scripts')
 </body>
 </html>

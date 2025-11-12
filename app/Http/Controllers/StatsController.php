@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\Position;
 use App\Models\Game;
 use App\Models\Player;
 use App\Models\PlayerGameStat;
@@ -175,16 +176,12 @@ class StatsController extends Controller
 
     public function statsVsPosition(Request $request)
     {
-        $positionFilter = $request->get('position', 'Guard');
+        $positionFilter = $request->get('position', Position::GUARD_LABEL);
+        $sortBy = $request->get('sort', 'points');
+        $sortDir = $request->get('dir', 'desc');
 
-        // Map position groups
-        $positionMapping = [
-            'Guard' => ['Guard', 'G'],
-            'Forward' => ['Forward', 'F'],
-            'Center' => ['Center', 'C'],
-        ];
-
-        $positions = $positionMapping[$positionFilter] ?? ['Guard', 'G'];
+        // Get position code for the selected category
+        $positionCode = Position::code($positionFilter);
 
         // Get all teams
         $teams = Team::all();
@@ -192,25 +189,18 @@ class StatsController extends Controller
         $teamStats = [];
 
         foreach ($teams as $team) {
-            // Get stats allowed to opponents at this position
-            // We need to find games where this team played and get opponent player stats
+            // Get games where this team played
             $gameIds = $team->gameStats()->pluck('game_id');
+            $totalGames = $gameIds->count();
 
-            // Get opponent player stats (players from opponent teams in these games)
+            // Get ALL opponent player stats at this position with 18+ minutes
+            // Calculate per-player average (NOT per-game)
             $opponentStats = PlayerGameStat::whereIn('game_id', $gameIds)
                 ->where('team_id', '!=', $team->id)
-                ->where('is_playing', true)
-                ->where(function($query) use ($positions) {
-                    foreach ($positions as $index => $pos) {
-                        if ($index === 0) {
-                            $query->where('position', 'LIKE', "%{$pos}%");
-                        } else {
-                            $query->orWhere('position', 'LIKE', "%{$pos}%");
-                        }
-                    }
-                })
+                ->where('minutes', '>=', 18)
+                ->where('position', 'LIKE', "%{$positionCode}%")
                 ->selectRaw('
-                    COUNT(*) as total_performances,
+                    COUNT(*) as total_players,
                     AVG(points) as avg_points,
                     AVG(total_rebounds) as avg_rebounds,
                     AVG(assists) as avg_assists,
@@ -220,20 +210,202 @@ class StatsController extends Controller
                 ')
                 ->first();
 
-            if ($opponentStats && $opponentStats->total_performances > 0) {
+            $totalPlayers = $opponentStats->total_players ?? 0;
+
+            if ($totalGames > 0 && $totalPlayers > 0) {
+                // Stats are already averaged per player
                 $teamStats[] = [
                     'team' => $team,
-                    'stats' => $opponentStats,
+                    'stats' => (object)[
+                        'games_count' => $totalGames,
+                        'total_players' => $totalPlayers,
+                        'avg_points' => $opponentStats->avg_points ?? 0,
+                        'avg_rebounds' => $opponentStats->avg_rebounds ?? 0,
+                        'avg_assists' => $opponentStats->avg_assists ?? 0,
+                        'avg_pir' => $opponentStats->avg_pir ?? 0,
+                        'avg_steals' => $opponentStats->avg_steals ?? 0,
+                        'avg_blocks' => $opponentStats->avg_blocks ?? 0,
+                    ]
                 ];
             }
         }
 
-        // Sort by avg_points allowed (descending - worst defense first)
-        usort($teamStats, function($a, $b) {
-            return $b['stats']->avg_points <=> $a['stats']->avg_points;
+        // Sort by selected stat
+        $sortField = 'avg_' . $sortBy;
+        usort($teamStats, function($a, $b) use ($sortField, $sortDir) {
+            $valueA = $a['stats']->$sortField ?? 0;
+            $valueB = $b['stats']->$sortField ?? 0;
+            return $sortDir === 'asc' ? $valueA <=> $valueB : $valueB <=> $valueA;
         });
 
-        return view('stats.vs-position', compact('teamStats', 'positionFilter'));
+        // Get all position labels for the filter
+        $positionLabels = Position::labels();
+
+        return view('stats.vs-position', compact('teamStats', 'positionFilter', 'positionLabels', 'sortBy', 'sortDir'));
+    }
+
+    public function formRecommendations(Request $request)
+    {
+        $teamFilter = $request->get('team');
+        $recentGames = 3; // Last 3 games for form
+
+        // Create cache key based on team filter
+        $cacheKey = 'form_recommendations_' . ($teamFilter ?? 'all');
+
+        // Cache for 1 hour (3600 seconds)
+        $playerData = cache()->remember($cacheKey, 3600, function () use ($teamFilter, $recentGames) {
+            // Get all players with recent games
+            $playersQuery = Player::with(['gameStats' => function($q) use ($recentGames) {
+                $q->orderBy('game_id', 'desc')
+                  ->limit($recentGames);
+            }])->whereHas('gameStats', function($q) use ($recentGames) {
+                $q->where('minutes', '>=', 15);
+            });
+
+            // Apply team filter if selected
+            if ($teamFilter) {
+                $playersQuery->whereHas('gameStats', function($q) use ($teamFilter) {
+                    $q->where('team_id', $teamFilter);
+                });
+            }
+
+            $players = $playersQuery->get();
+
+            $data = [];
+
+            foreach ($players as $player) {
+                $recentStats = $player->gameStats()
+                    ->where('minutes', '>=', 15)
+                    ->orderBy('game_id', 'desc')
+                    ->limit($recentGames)
+                    ->get();
+
+                if ($recentStats->count() < 2) {
+                    continue; // Need at least 2 games
+                }
+
+                // Calculate player's recent form (average PIR in last N games)
+                $recentAvgPir = $recentStats->avg('valuation');
+                $recentAvgPoints = $recentStats->avg('points');
+                $recentAvgRebounds = $recentStats->avg('total_rebounds');
+                $recentAvgAssists = $recentStats->avg('assists');
+
+                // Get player's position and team from most recent game
+                $latestGame = $recentStats->first();
+                if (!$latestGame || !$latestGame->position) {
+                    continue;
+                }
+
+                $playerPosition = $latestGame->position;
+                $playerTeamId = $latestGame->team_id;
+
+                // Calculate average defense quality against this position across all opponents
+                $positionCode = substr($playerPosition, 0, 1); // G, F, or C
+
+                // Get all teams' defense vs this position
+                $teams = Team::all();
+                $opponentDefenseScores = [];
+
+                foreach ($teams as $team) {
+                    if ($team->id == $playerTeamId) {
+                        continue; // Skip player's own team
+                    }
+
+                    $gameIds = $team->gameStats()->pluck('game_id')->toArray();
+
+                    if (empty($gameIds)) {
+                        continue;
+                    }
+
+                    $opponentStats = PlayerGameStat::whereIn('game_id', $gameIds)
+                        ->where('team_id', '!=', $team->id)
+                        ->where('minutes', '>=', 18)
+                        ->where('position', 'LIKE', "%{$positionCode}%")
+                        ->selectRaw('AVG(valuation) as avg_pir')
+                        ->first();
+
+                    if ($opponentStats && $opponentStats->avg_pir) {
+                        $opponentDefenseScores[] = $opponentStats->avg_pir;
+                    }
+                }
+
+                // Average opponent defense quality (higher = worse defense = easier matchup)
+                $avgOpponentDefense = !empty($opponentDefenseScores)
+                    ? array_sum($opponentDefenseScores) / count($opponentDefenseScores)
+                    : 0;
+
+                // Calculate league averages for normalization (center the graph)
+                static $leagueAvgPir = null;
+                static $leagueAvgOpponentDefense = null;
+
+                if ($leagueAvgPir === null) {
+                    $leagueAvgPir = 12; // Will be calculated properly below
+                    $leagueAvgOpponentDefense = 12; // Will be calculated properly below
+                }
+
+                $data[] = [
+                    'id' => $player->id,
+                    'name' => $player->player_name,
+                    'position' => $playerPosition,
+                    'team_id' => $playerTeamId,
+                    'recent_form' => round($recentAvgPir, 2),
+                    'opponent_quality' => round($avgOpponentDefense, 2),
+                    'recent_points' => round($recentAvgPoints, 2),
+                    'recent_rebounds' => round($recentAvgRebounds, 2),
+                    'recent_assists' => round($recentAvgAssists, 2),
+                    'games_played' => $recentStats->count(),
+                ];
+            }
+
+            // Calculate league averages for centering the graph
+            if (count($data) > 0) {
+                $formValues = collect($data)->pluck('recent_form');
+                $opponentValues = collect($data)->pluck('opponent_quality');
+
+                $avgForm = $formValues->avg();
+                $avgOpponent = $opponentValues->avg();
+
+                // Calculate standard deviations for better spread
+                $formStdDev = sqrt($formValues->map(function($v) use ($avgForm) {
+                    return pow($v - $avgForm, 2);
+                })->avg());
+
+                $opponentStdDev = sqrt($opponentValues->map(function($v) use ($avgOpponent) {
+                    return pow($v - $avgOpponent, 2);
+                })->avg());
+
+                // Prevent division by zero
+                $formStdDev = $formStdDev > 0 ? $formStdDev : 1;
+                $opponentStdDev = $opponentStdDev > 0 ? $opponentStdDev : 1;
+
+                // Normalize data using z-scores (scaled to spread nicely)
+                // Multiply by scaling factor to spread the points out more
+                $spreadFactor = 3; // Adjust this to change spread (higher = more spread)
+
+                foreach ($data as &$player) {
+                    // Z-score normalization: (value - mean) / stddev
+                    // Then multiply by spread factor for better visualization
+                    $player['form_normalized'] = round(
+                        (($player['recent_form'] - $avgForm) / $formStdDev) * $spreadFactor,
+                        2
+                    );
+                    $player['opponent_normalized'] = round(
+                        (($player['opponent_quality'] - $avgOpponent) / $opponentStdDev) * $spreadFactor,
+                        2
+                    );
+                }
+            }
+
+            return $data;
+        });
+
+        // Get all teams for filter dropdown
+        $teams = Team::orderBy('team_name')->get();
+
+        return view('stats.form-recommendations', [
+            'playerData' => $playerData,
+            'teams' => $teams,
+            'selectedTeam' => $teamFilter,
+        ]);
     }
 }
-

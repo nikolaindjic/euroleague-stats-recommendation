@@ -15,4 +15,5 @@ Route::get('/teams/{id}', [StatsController::class, 'team'])->name('stats.team');
 Route::get('/players', [StatsController::class, 'players'])->name('stats.players');
 Route::get('/players/{id}', [StatsController::class, 'player'])->name('stats.player');
 Route::get('/stats-vs-position', [StatsController::class, 'statsVsPosition'])->name('stats.vs-position');
+Route::get('/form-recommendations', [StatsController::class, 'formRecommendations'])->name('stats.form-recommendations');
 
