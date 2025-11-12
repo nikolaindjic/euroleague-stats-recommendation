@@ -1,11 +1,95 @@
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+# Euroleague Stats & Recommendations
+
+A Laravel application for tracking Euroleague basketball statistics and providing player recommendations based on form and defensive matchups.
+
+## Features
+
+- **Game Statistics Tracking**: Fetch and store complete game statistics from the Euroleague API
+- **Defense vs Position Analysis**: Analyze how teams defend against different positions (Guards, Forwards, Centers)
+- **Form-Based Recommendations**: Visual graph showing players in good form against favorable defensive matchups
+- **Player Overview**: Detailed player statistics and performance tracking
+- **Team Analysis**: Team statistics and defensive capabilities
+- **Real-time Updates**: Fetch latest game data from Euroleague API
+
+## Quick Start
+
+1. **Setup**: See [SETUP.md](SETUP.md) for installation instructions
+2. **Fetch Data**: See [API_USAGE_SUMMARY.md](API_USAGE_SUMMARY.md) for quick reference
+3. **Full API Guide**: See [API_INTEGRATION.md](API_INTEGRATION.md) for detailed API documentation
+
+## Documentation
+
+- **[SETUP.md](SETUP.md)** - Initial setup and installation
+- **[SCHEDULE_INTEGRATION_SUCCESS.md](SCHEDULE_INTEGRATION_SUCCESS.md)** - ✅ Schedule API integration (WORKING!)
+- **[API_INTEGRATION_UPDATED.md](API_INTEGRATION_UPDATED.md)** - ⚠️ Why v1 player API doesn't work
+- **[API_USAGE_SUMMARY.md](API_USAGE_SUMMARY.md)** - Quick reference
+- **[DEFENSE_VS_POSITION.md](DEFENSE_VS_POSITION.md)** - Defense vs Position feature
+- **[FORM_RECOMMENDATIONS.md](FORM_RECOMMENDATIONS.md)** - Form-based recommendations
+- **[HMR_SETUP.md](HMR_SETUP.md)** - Hot Module Replacement
+
+## Available Commands
+
+### ✅ Schedule Management (NEW - Works Great!)
+```bash
+# Sync complete schedule from API
+php artisan euroleague:sync-schedule
+
+# Shows:
+# - All upcoming games
+# - Which played games need stats
+# - Complete season overview
+```
+
+### ✅ Fetch Game Statistics (Recommended)
+```bash
+# Fetch all games
+php artisan euroleague:fetch-stats --start=1 --end=230
+
+# Fetch specific game (from schedule)
+php artisan euroleague:fetch-stats --game=231
+
+# Force reload games
+php artisan euroleague:fetch-stats --start=1 --end=97 --force
+```
+
+### Recommended Workflow
+```bash
+# Step 1: Sync schedule (see what games exist)
+php artisan euroleague:sync-schedule
+
+# Step 2: Fetch stats for specific games it identifies
+php artisan euroleague:fetch-stats --game=<CODE>
+```
+
+## Pages
+
+- `/games` - List all games
+- `/games/{id}` - Game details
+- `/teams` - List all teams
+- `/teams/{id}` - Team details
+- `/players` - List all players
+- `/players/{id}` - Player details
+- `/stats-vs-position` - Defense vs Position analysis
+- `/form-recommendations` - Player recommendations graph
+
+## Tech Stack
+
+- **Backend**: Laravel 12
+- **Frontend**: Vue 3 + Inertia.js
+- **Charts**: Chart.js
+- **Styling**: Tailwind CSS
+- **Database**: MySQL
+
+## Position System
+
+Players are categorized into three positions:
+- **G** (Guard) - Point Guards, Shooting Guards
+- **F** (Forward) - Small Forwards, Power Forwards
+- **C** (Center) - Centers
+
+---
 
 ## About Laravel
 

@@ -4,9 +4,9 @@
 
 @section('content')
 <div class="mb-6">
-    <h1 class="text-4xl font-bold text-gray-800 dark:text-white">Defense vs Position</h1>
-    <p class="text-gray-600 dark:text-gray-400 mt-2">Average stats allowed per player at each position (18+ min only)</p>
-    <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">💡 Higher values = Easier matchup (average player at position scores more)</p>
+    <h1 class="text-4xl font-bold text-gray-800 dark:text-white">Defense vs Position - Next Opponents</h1>
+    <p class="text-gray-600 dark:text-gray-400 mt-2">How each team's next opponent defends against {{ $positionFilter }}s</p>
+    <p class="text-sm text-gray-500 dark:text-gray-500 mt-1">💡 Higher values = Easier matchup for your {{ $positionFilter }}s</p>
 </div>
 
 <!-- Position Filter Tabs -->
@@ -65,7 +65,10 @@
             <thead class="bg-gray-50 dark:bg-gray-900">
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-gray-900">Rank</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-16 bg-gray-50 dark:bg-gray-900">Team</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky left-16 bg-gray-50 dark:bg-gray-900">
+                        <div>Team</div>
+                        <div class="text-xs font-normal normal-case">vs Next Opponent</div>
+                    </th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         <a href="{{ route('stats.vs-position', ['position' => $positionFilter, 'sort' => 'points', 'dir' => $sortBy === 'points' && $sortDir === 'desc' ? 'asc' : 'desc']) }}"
                            class="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex flex-col items-center">
@@ -177,7 +180,14 @@
                         <a href="{{ route('stats.team', $teamStat['team']->id) }}" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors">
                             {{ $teamStat['team']->team_name }}
                         </a>
-                        <div class="text-xs text-gray-500 dark:text-gray-400">{{ $teamStat['team']->team_code }}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            <span class="font-semibold">Next:</span>
+                            {{ $teamStat['next_opponent']->team_name }}
+                        </div>
+                        <div class="text-xs text-gray-400 dark:text-gray-500">
+                            {{ date('M j', strtotime($teamStat['next_game']->game_date)) }} -
+                            {{ $teamStat['next_game']->home_team_code === $teamStat['team']->team_code ? 'Home' : 'Away' }}
+                        </div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center">
                         <div class="text-lg font-bold text-gray-900 dark:text-white">

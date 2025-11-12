@@ -45,6 +45,7 @@ $player['opponent_normalized'] = (($value - mean) / stddev) * spreadFactor;
 ### 5. **Interactive Features**
 - Click any point to view player details
 - Hover to see tooltip with full stats
+- **Player surnames displayed next to each point** for easy identification
 - Color-coded by position:
   - 🔵 Blue = Guards
   - 🟢 Green = Forwards

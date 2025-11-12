@@ -96,9 +96,10 @@
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Rank</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Player</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Next Opponent</th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Position</th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Recent Form (PIR)</th>
-                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Matchup Quality</th>
+                    <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Opponent Defense</th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg Points</th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg Rebounds</th>
                     <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Avg Assists</th>
@@ -123,6 +124,22 @@
                            class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-medium transition-colors">
                             {{ $player['name'] }}
                         </a>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {{ $player['team_name'] ?? 'Unknown' }}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="font-semibold text-gray-900 dark:text-white">
+                            {{ $player['next_opponent'] ?? 'No game' }}
+                        </div>
+                        @if(isset($player['next_game_date']))
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {{ date('M j, H:i', strtotime($player['next_game_date'])) }}
+                            <span class="ml-1 px-1.5 py-0.5 rounded text-xs {{ $player['is_home'] ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' }}">
+                                {{ $player['is_home'] ? 'H' : 'A' }}
+                            </span>
+                        </div>
+                        @endif
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-center">
                         <span class="px-2 py-1 text-xs font-semibold rounded-full
@@ -188,6 +205,7 @@
 
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Check if Chart.js loaded
@@ -200,14 +218,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const playerData = @json($playerData);
 
+    // Helper function to get surname from full name
+    // Names are formatted as "SURNAME, Firstname" so we take the first part before comma
+    function getSurname(fullName) {
+        const parts = fullName.trim().split(',');
+        // If there's a comma, take the part before it (surname)
+        if (parts.length > 1) {
+            return parts[0].trim();
+        }
+        // Otherwise, take the first word
+        const words = fullName.trim().split(/\s+/);
+        return words[0];
+    }
+
     // Prepare data for Chart.js using normalized values (centered at 0)
+    // X-axis = Opponent Quality (same for players of same position)
+    // Y-axis = Recent Form (different for each player)
     const chartData = {
         datasets: [{
             label: 'Players',
             data: playerData.map(p => ({
-                x: p.opponent_normalized,  // Centered around 0
-                y: p.form_normalized,       // Centered around 0
-                player: p
+                x: p.opponent_normalized,  // X-axis: Matchup Quality
+                y: p.form_normalized,       // Y-axis: Player Form
+                player: p,
+                surname: getSurname(p.name) // Add surname for labeling
             })),
             backgroundColor: playerData.map(p => {
                 // Color by position
@@ -257,14 +291,40 @@ document.addEventListener('DOMContentLoaded', function() {
                             },
                             label: function(context) {
                                 const p = context.raw.player;
+                                const nextOpp = p.next_opponent || 'No game';
+                                const gameDate = p.next_game_date ? new Date(p.next_game_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                                const venue = p.is_home ? '(H)' : '(A)';
                                 return [
+                                    `Team: ${p.team_name}`,
+                                    `Next vs: ${nextOpp} ${gameDate} ${venue}`,
                                     `Position: ${p.position}`,
                                     `Form (PIR): ${p.recent_form}`,
-                                    `Matchup Quality: ${p.opponent_quality}`,
+                                    `Opponent Defense: ${p.opponent_quality}`,
                                     `Recent: ${p.recent_points} pts, ${p.recent_rebounds} reb, ${p.recent_assists} ast`
                                 ];
                             }
                         }
+                    },
+                    datalabels: {
+                        color: function(context) {
+                            // Use darker color for text based on position
+                            const p = context.dataset.data[context.dataIndex].player;
+                            if (p.position.includes('G')) return isDark ? '#93c5fd' : '#1e40af'; // Blue
+                            if (p.position.includes('F')) return isDark ? '#86efac' : '#15803d'; // Green
+                            return isDark ? '#d8b4fe' : '#6b21a8'; // Purple
+                        },
+                        font: {
+                            size: 10,
+                            weight: 'bold',
+                            family: 'Inter, sans-serif'
+                        },
+                        align: 'right',
+                        anchor: 'end',
+                        offset: 4,
+                        formatter: function(value, context) {
+                            return context.dataset.data[context.dataIndex].surname;
+                        },
+                        clip: false // Allow labels to overflow the chart area
                     }
                 },
                 scales: {
@@ -275,7 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         max: 10,   // Force range to show positives
                         title: {
                             display: true,
-                            text: '← Tough Matchup | Easier Matchup →',
+                            text: '← Tougher Matchup | Easier Matchup →',
                             color: isDark ? '#d1d5db' : '#374151',
                             font: {
                                 size: 14,
@@ -359,7 +419,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         window.location.href = `/players/${player.id}`;
                     }
                 }
-            }
+            },
+            plugins: [ChartDataLabels] // Register the datalabels plugin
         });
 
         // Hide loading indicator

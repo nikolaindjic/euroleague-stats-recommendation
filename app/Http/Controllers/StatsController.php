@@ -13,7 +13,9 @@ class StatsController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Game::with(['teamStats.team']);
+        // Only show completed games that have team stats
+        $query = Game::with(['teamStats.team'])
+            ->whereHas('teamStats'); // Only games with stats (completed games)
 
         // Search functionality
         if ($request->filled('search')) {
@@ -34,8 +36,9 @@ class StatsController extends Controller
 
         $games = $query->orderBy('game_code', 'desc')->paginate(20);
 
-        // Get all unique rounds for filter dropdown
-        $rounds = Game::select('round')
+        // Get all unique rounds for filter dropdown (only from completed games)
+        $rounds = Game::whereHas('teamStats')
+            ->select('round')
             ->distinct()
             ->orderBy('round')
             ->pluck('round');
@@ -189,14 +192,40 @@ class StatsController extends Controller
         $teamStats = [];
 
         foreach ($teams as $team) {
-            // Get games where this team played
-            $gameIds = $team->gameStats()->pluck('game_id');
-            $totalGames = $gameIds->count();
+            // Get next upcoming game for this team
+            $nextGame = Game::where('season_code', 'E2025')
+                ->where('is_played', false)
+                ->where(function($query) use ($team) {
+                    $query->where('home_team_code', $team->team_code)
+                          ->orWhere('away_team_code', $team->team_code);
+                })
+                ->orderBy('game_date')
+                ->first();
 
-            // Get ALL opponent player stats at this position with 18+ minutes
-            // Calculate per-player average (NOT per-game)
-            $opponentStats = PlayerGameStat::whereIn('game_id', $gameIds)
-                ->where('team_id', '!=', $team->id)
+            if (!$nextGame) {
+                continue; // Skip teams without upcoming games
+            }
+
+            // Get opponent team code
+            $opponentCode = ($nextGame->home_team_code === $team->team_code)
+                ? $nextGame->away_team_code
+                : $nextGame->home_team_code;
+
+            // Find opponent team
+            $opponentTeam = Team::where('team_code', $opponentCode)->first();
+
+            if (!$opponentTeam) {
+                continue;
+            }
+
+            // Get games where opponent team played (their defensive record)
+            $opponentGameIds = $opponentTeam->gameStats()->pluck('game_id');
+            $totalGames = $opponentGameIds->count();
+
+            // Get opponent's defensive stats vs this position
+            // (how they allowed players at this position to perform)
+            $defenseStats = PlayerGameStat::whereIn('game_id', $opponentGameIds)
+                ->where('team_id', '!=', $opponentTeam->id) // Opposing players
                 ->where('minutes', '>=', 18)
                 ->where('position', 'LIKE', "%{$positionCode}%")
                 ->selectRaw('
@@ -210,21 +239,22 @@ class StatsController extends Controller
                 ')
                 ->first();
 
-            $totalPlayers = $opponentStats->total_players ?? 0;
+            $totalPlayers = $defenseStats->total_players ?? 0;
 
             if ($totalGames > 0 && $totalPlayers > 0) {
-                // Stats are already averaged per player
                 $teamStats[] = [
                     'team' => $team,
+                    'next_opponent' => $opponentTeam,
+                    'next_game' => $nextGame,
                     'stats' => (object)[
                         'games_count' => $totalGames,
                         'total_players' => $totalPlayers,
-                        'avg_points' => $opponentStats->avg_points ?? 0,
-                        'avg_rebounds' => $opponentStats->avg_rebounds ?? 0,
-                        'avg_assists' => $opponentStats->avg_assists ?? 0,
-                        'avg_pir' => $opponentStats->avg_pir ?? 0,
-                        'avg_steals' => $opponentStats->avg_steals ?? 0,
-                        'avg_blocks' => $opponentStats->avg_blocks ?? 0,
+                        'avg_points' => $defenseStats->avg_points ?? 0,
+                        'avg_rebounds' => $defenseStats->avg_rebounds ?? 0,
+                        'avg_assists' => $defenseStats->avg_assists ?? 0,
+                        'avg_pir' => $defenseStats->avg_pir ?? 0,
+                        'avg_steals' => $defenseStats->avg_steals ?? 0,
+                        'avg_blocks' => $defenseStats->avg_blocks ?? 0,
                     ]
                 ];
             }
@@ -299,10 +329,53 @@ class StatsController extends Controller
                 $playerPosition = $latestGame->position;
                 $playerTeamId = $latestGame->team_id;
 
+                // Get player's team and next opponent
+                $playerTeam = Team::find($playerTeamId);
+                $nextGame = null;
+                $nextOpponent = null;
+                $nextOpponentDefense = 0;
+
+                if ($playerTeam) {
+                    $nextGame = Game::where('season_code', 'E2025')
+                        ->where('is_played', false)
+                        ->where(function($query) use ($playerTeam) {
+                            $query->where('home_team_code', $playerTeam->team_code)
+                                  ->orWhere('away_team_code', $playerTeam->team_code);
+                        })
+                        ->orderBy('game_date')
+                        ->first();
+
+                    if ($nextGame) {
+                        $nextOpponentCode = ($nextGame->home_team_code === $playerTeam->team_code)
+                            ? $nextGame->away_team_code
+                            : $nextGame->home_team_code;
+
+                        $nextOpponent = Team::where('team_code', $nextOpponentCode)->first();
+                    }
+                }
+
                 // Calculate average defense quality against this position across all opponents
                 $positionCode = substr($playerPosition, 0, 1); // G, F, or C
 
-                // Get all teams' defense vs this position
+                // Get next opponent's specific defense if available
+                if ($nextOpponent) {
+                    $opponentGameIds = $nextOpponent->gameStats()->pluck('game_id')->toArray();
+
+                    if (!empty($opponentGameIds)) {
+                        $opponentDefenseStats = PlayerGameStat::whereIn('game_id', $opponentGameIds)
+                            ->where('team_id', '!=', $nextOpponent->id)
+                            ->where('minutes', '>=', 18)
+                            ->where('position', 'LIKE', "%{$positionCode}%")
+                            ->selectRaw('AVG(valuation) as avg_pir')
+                            ->first();
+
+                        if ($opponentDefenseStats && $opponentDefenseStats->avg_pir) {
+                            $nextOpponentDefense = $opponentDefenseStats->avg_pir;
+                        }
+                    }
+                }
+
+                // Get all teams' defense vs this position (for fallback)
                 $teams = Team::all();
                 $opponentDefenseScores = [];
 
@@ -329,10 +402,15 @@ class StatsController extends Controller
                     }
                 }
 
-                // Average opponent defense quality (higher = worse defense = easier matchup)
-                $avgOpponentDefense = !empty($opponentDefenseScores)
-                    ? array_sum($opponentDefenseScores) / count($opponentDefenseScores)
-                    : 0;
+                // Use next opponent's defense if available, otherwise use league average
+                $avgOpponentDefense = $nextOpponentDefense > 0
+                    ? $nextOpponentDefense
+                    : (!empty($opponentDefenseScores) ? array_sum($opponentDefenseScores) / count($opponentDefenseScores) : 0);
+
+                // Skip players without next opponent or defense data
+                if (!$nextOpponent || $avgOpponentDefense == 0) {
+                    continue;
+                }
 
                 // Calculate league averages for normalization (center the graph)
                 static $leagueAvgPir = null;
@@ -348,6 +426,11 @@ class StatsController extends Controller
                     'name' => $player->player_name,
                     'position' => $playerPosition,
                     'team_id' => $playerTeamId,
+                    'team_name' => $playerTeam->team_name ?? 'Unknown',
+                    'next_opponent' => $nextOpponent ? $nextOpponent->team_name : 'No game',
+                    'next_opponent_code' => $nextOpponent ? $nextOpponent->team_code : '',
+                    'next_game_date' => $nextGame ? $nextGame->game_date : null,
+                    'is_home' => $nextGame && $nextGame->home_team_code === $playerTeam->team_code,
                     'recent_form' => round($recentAvgPir, 2),
                     'opponent_quality' => round($avgOpponentDefense, 2),
                     'recent_points' => round($recentAvgPoints, 2),
