@@ -7,7 +7,9 @@ use App\Models\Game;
 use App\Models\Player;
 use App\Models\PlayerGameStat;
 use App\Models\Team;
+use App\Services\EuroleagueStatsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class StatsController extends Controller
 {
@@ -490,5 +492,77 @@ class StatsController extends Controller
             'teams' => $teams,
             'selectedTeam' => $teamFilter,
         ]);
+    }
+
+    public function syncData(Request $request)
+    {
+        try {
+            $service = new EuroleagueStatsService();
+            $results = [
+                'schedule' => ['created' => 0, 'skipped' => 0, 'failed' => 0],
+                'games' => ['success' => 0, 'failed' => 0, 'skipped' => 0],
+                'positions' => ['updated' => 0, 'failed' => 0],
+            ];
+
+            // Step 1: Sync complete schedule (both played and future games)
+            Log::info("Starting schedule sync...");
+            $scheduleResults = $service->syncScheduleFromV2Api('E2025', false); // false = sync all games
+            $results['schedule'] = $scheduleResults;
+
+            // Step 2: Fetch stats for all played games that don't have stats yet
+            Log::info("Fetching game stats...");
+            $gamesToFetch = $service->getNextGamesToFetch('E2025', 50); // Get up to 50 games
+
+            foreach ($gamesToFetch as $gameInfo) {
+                $success = $service->fetchAndStoreGame($gameInfo['game_code'], 'E2025', true);
+
+                if ($success) {
+                    $results['games']['success']++;
+                } else {
+                    $results['games']['failed']++;
+                }
+
+                // Small delay to avoid overwhelming the API
+                usleep(500000); // 0.5 seconds
+            }
+
+            // Step 3: Update player positions for players missing position data
+            Log::info("Updating player positions...");
+            $playersWithoutPosition = Player::whereNull('position')
+                ->orWhere('position', '')
+                ->limit(100)
+                ->get();
+
+            foreach ($playersWithoutPosition as $player) {
+                // Try to get position from their game stats
+                $latestStat = PlayerGameStat::where('player_id', $player->id)
+                    ->whereNotNull('position')
+                    ->orderBy('game_id', 'desc')
+                    ->first();
+
+                if ($latestStat && $latestStat->position) {
+                    $player->update(['position' => $latestStat->position]);
+                    $results['positions']['updated']++;
+                } else {
+                    $results['positions']['failed']++;
+                }
+            }
+
+            Log::info("Sync completed", $results);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data sync completed successfully',
+                'results' => $results,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error("Sync failed", ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Sync failed: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

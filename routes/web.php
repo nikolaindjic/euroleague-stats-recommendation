@@ -17,3 +17,6 @@ Route::get('/players/{id}', [StatsController::class, 'player'])->name('stats.pla
 Route::get('/stats-vs-position', [StatsController::class, 'statsVsPosition'])->name('stats.vs-position');
 Route::get('/form-recommendations', [StatsController::class, 'formRecommendations'])->name('stats.form-recommendations');
 
+// Sync Routes
+Route::post('/sync-data', [StatsController::class, 'syncData'])->name('stats.sync');
+

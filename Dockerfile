@@ -35,7 +35,18 @@ RUN sed -i 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available
     Options Indexes FollowSymLinks\n\
     AllowOverride All\n\
     Require all granted\n\
+</Directory>\n\
+<Directory /var/www/html/public/build>\n\
+    Options -Indexes +FollowSymLinks\n\
+    AllowOverride None\n\
+    Require all granted\n\
+    <IfModule mod_headers.c>\n\
+        Header set Cache-Control "public, max-age=31536000, immutable"\n\
+    </IfModule>\n\
 </Directory>' >> /etc/apache2/apache2.conf
+
+# Enable headers module for cache control
+RUN a2enmod headers
 
 # Copy application files
 COPY . /var/www/html
@@ -65,20 +76,16 @@ RUN mkdir -p /var/www/html/storage/framework/cache \
 RUN cp .env.example .env || true && \
     php artisan key:generate --force
 
-# Run migrations
-RUN php artisan migrate --force
-
-# Clear any config cache and optimize for production
-RUN php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache
-
 # Ensure build directory has correct permissions
 RUN chown -R www-data:www-data /var/www/html/public/build
+
+# Copy and set up entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Expose port 80
 EXPOSE 80
 
-# Start Apache in foreground
-CMD ["apache2-foreground"]
+# Use entrypoint script
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 

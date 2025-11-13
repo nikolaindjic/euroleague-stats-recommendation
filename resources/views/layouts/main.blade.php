@@ -67,7 +67,15 @@
                 </div>
 
                 <!-- Dark Mode Toggle -->
-                <div class="flex items-center">
+                <div class="flex items-center space-x-3">
+                    <!-- Sync Button -->
+                    <button id="sync-button" type="button" class="text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800 rounded-lg text-sm px-3 py-2 transition-colors font-medium">
+                        <svg id="sync-icon" class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                        <span id="sync-text">Sync Data</span>
+                    </button>
+
                     <button id="theme-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5 transition-colors">
                         <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
                         <svg id="theme-toggle-light-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" fill-rule="evenodd" clip-rule="evenodd"></path></svg>
@@ -152,6 +160,184 @@
                     document.documentElement.classList.add('dark');
                     localStorage.setItem('theme', 'dark');
                 }
+            }
+        });
+    </script>
+
+    <!-- Sync Modal -->
+    <div id="sync-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+            <div class="mt-3">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Sync Game Data</h3>
+                    <button id="close-modal" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div id="sync-status" class="mb-4">
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        This will sync:
+                    </p>
+                    <ul class="list-disc list-inside text-sm text-gray-600 dark:text-gray-400 mt-2 space-y-1">
+                        <li>Complete game schedule (all games)</li>
+                        <li>Game stats for played games</li>
+                        <li>Player position data</li>
+                    </ul>
+                </div>
+                <div id="sync-progress" class="hidden">
+                    <div class="flex items-center justify-center mb-4">
+                        <svg class="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                    <p class="text-sm text-gray-600 dark:text-gray-400 text-center">
+                        Syncing data... This may take a minute.
+                    </p>
+                </div>
+                <div id="sync-results" class="hidden">
+                    <div class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                        <div class="flex">
+                            <svg class="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-green-800 dark:text-green-400">Sync Complete!</h3>
+                                <div id="sync-details" class="mt-2 text-sm text-green-700 dark:text-green-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="sync-error" class="hidden">
+                    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                        <div class="flex">
+                            <svg class="h-5 w-5 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                            <div class="ml-3">
+                                <h3 class="text-sm font-medium text-red-800 dark:text-red-400">Sync Failed</h3>
+                                <div id="error-message" class="mt-2 text-sm text-red-700 dark:text-red-500">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex justify-end mt-6 space-x-3">
+                    <button id="cancel-sync" class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md transition-colors">
+                        Cancel
+                    </button>
+                    <button id="confirm-sync" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 rounded-md transition-colors">
+                        Start Sync
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Script -->
+    <script>
+        const syncButton = document.getElementById('sync-button');
+        const syncModal = document.getElementById('sync-modal');
+        const closeModal = document.getElementById('close-modal');
+        const cancelSync = document.getElementById('cancel-sync');
+        const confirmSync = document.getElementById('confirm-sync');
+        const syncStatus = document.getElementById('sync-status');
+        const syncProgress = document.getElementById('sync-progress');
+        const syncResults = document.getElementById('sync-results');
+        const syncError = document.getElementById('sync-error');
+        const syncIcon = document.getElementById('sync-icon');
+        const syncText = document.getElementById('sync-text');
+
+        // Open modal
+        syncButton.addEventListener('click', function() {
+            syncModal.classList.remove('hidden');
+            resetModal();
+        });
+
+        // Close modal
+        closeModal.addEventListener('click', closeModalHandler);
+        cancelSync.addEventListener('click', closeModalHandler);
+
+        function closeModalHandler() {
+            syncModal.classList.add('hidden');
+        }
+
+        function resetModal() {
+            syncStatus.classList.remove('hidden');
+            syncProgress.classList.add('hidden');
+            syncResults.classList.add('hidden');
+            syncError.classList.add('hidden');
+            confirmSync.classList.remove('hidden');
+            cancelSync.classList.remove('hidden');
+        }
+
+        // Start sync
+        confirmSync.addEventListener('click', async function() {
+            syncStatus.classList.add('hidden');
+            syncProgress.classList.remove('hidden');
+            confirmSync.classList.add('hidden');
+            cancelSync.textContent = 'Please Wait...';
+            cancelSync.disabled = true;
+
+            // Add spinning animation to header button
+            syncIcon.classList.add('animate-spin');
+
+            try {
+                const response = await fetch('{{ route('stats.sync') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    }
+                });
+
+                const data = await response.json();
+
+                syncProgress.classList.add('hidden');
+                syncIcon.classList.remove('animate-spin');
+
+                if (data.success) {
+                    syncResults.classList.remove('hidden');
+
+                    // Display results
+                    const details = document.getElementById('sync-details');
+                    details.innerHTML = `
+                        <p><strong>Schedule:</strong> ${data.results.schedule.created} created, ${data.results.schedule.skipped} skipped</p>
+                        <p><strong>Games:</strong> ${data.results.games.success} synced, ${data.results.games.failed} failed</p>
+                        <p><strong>Positions:</strong> ${data.results.positions.updated} updated</p>
+                    `;
+
+                    cancelSync.textContent = 'Close';
+                    cancelSync.disabled = false;
+
+                    // Update button text temporarily
+                    syncText.textContent = 'Synced!';
+                    setTimeout(() => {
+                        syncText.textContent = 'Sync Data';
+                    }, 3000);
+                } else {
+                    syncError.classList.remove('hidden');
+                    document.getElementById('error-message').textContent = data.message;
+                    cancelSync.textContent = 'Close';
+                    cancelSync.disabled = false;
+                }
+            } catch (error) {
+                syncProgress.classList.add('hidden');
+                syncError.classList.remove('hidden');
+                syncIcon.classList.remove('animate-spin');
+                document.getElementById('error-message').textContent = 'Network error: ' + error.message;
+                cancelSync.textContent = 'Close';
+                cancelSync.disabled = false;
+            }
+        });
+
+        // Close modal when clicking outside
+        syncModal.addEventListener('click', function(e) {
+            if (e.target === syncModal) {
+                closeModalHandler();
             }
         });
     </script>
