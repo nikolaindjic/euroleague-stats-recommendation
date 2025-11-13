@@ -10,6 +10,7 @@ use App\Models\Team;
 use App\Services\EuroleagueStatsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class StatsController extends Controller
 {
@@ -43,9 +44,30 @@ class StatsController extends Controller
             ->select('round')
             ->distinct()
             ->orderBy('round')
-            ->pluck('round');
+            ->pluck('round')
+            ->toArray();
 
-        return view('stats.index', compact('games', 'rounds'));
+        return Inertia::render('Games/Index', [
+            'games' => $games->through(fn ($game) => [
+                'id' => $game->id,
+                'game_code' => $game->game_code,
+                'round' => $game->round,
+                'season_code' => $game->season_code,
+                'attendance' => $game->attendance,
+                'team_stats' => $game->teamStats->map(fn ($stat) => [
+                    'total_points' => $stat->total_points,
+                    'team' => [
+                        'id' => $stat->team->id,
+                        'team_name' => $stat->team->team_name,
+                    ]
+                ])
+            ]),
+            'rounds' => $rounds,
+            'filters' => [
+                'search' => $request->search,
+                'round' => $request->round,
+            ]
+        ]);
     }
 
     public function game($id)
@@ -59,13 +81,65 @@ class StatsController extends Controller
         // Group player stats by team
         $teamStats = [];
         foreach ($game->teamStats as $teamStat) {
-            $teamStats[$teamStat->team_id] = [
-                'team' => $teamStat,
-                'players' => $game->playerStats->where('team_id', $teamStat->team_id)->sortByDesc('points')
+            $players = $game->playerStats
+                ->where('team_id', $teamStat->team_id)
+                ->sortByDesc('points')
+                ->values();
+
+            $teamStats[] = [
+                'team' => [
+                    'id' => $teamStat->team->id,
+                    'team_name' => $teamStat->team->team_name,
+                ],
+                'team_stat' => [
+                    'total_points' => $teamStat->total_points,
+                    'quarter1' => $teamStat->quarter1,
+                    'quarter2' => $teamStat->quarter2,
+                    'quarter3' => $teamStat->quarter3,
+                    'quarter4' => $teamStat->quarter4,
+                    'field_goals_made_2' => $teamStat->field_goals_made_2,
+                    'field_goals_attempted_2' => $teamStat->field_goals_attempted_2,
+                    'field_goals_made_3' => $teamStat->field_goals_made_3,
+                    'field_goals_attempted_3' => $teamStat->field_goals_attempted_3,
+                    'free_throws_made' => $teamStat->free_throws_made,
+                    'free_throws_attempted' => $teamStat->free_throws_attempted,
+                    'total_rebounds' => $teamStat->total_rebounds,
+                    'assists' => $teamStat->assists,
+                    'steals' => $teamStat->steals,
+                    'coach' => $teamStat->coach,
+                ],
+                'players' => $players->map(fn ($stat) => [
+                    'id' => $stat->id,
+                    'player_id' => $stat->player->id,
+                    'player_name' => $stat->player->player_name,
+                    'dorsal' => $stat->dorsal,
+                    'is_starter' => $stat->is_starter,
+                    'minutes' => $stat->minutes,
+                    'points' => $stat->points,
+                    'field_goals_made_2' => $stat->field_goals_made_2,
+                    'field_goals_attempted_2' => $stat->field_goals_attempted_2,
+                    'field_goals_made_3' => $stat->field_goals_made_3,
+                    'field_goals_attempted_3' => $stat->field_goals_attempted_3,
+                    'free_throws_made' => $stat->free_throws_made,
+                    'free_throws_attempted' => $stat->free_throws_attempted,
+                    'total_rebounds' => $stat->total_rebounds,
+                    'assists' => $stat->assists,
+                    'valuation' => $stat->valuation,
+                ])->toArray(),
             ];
         }
 
-        return view('stats.game', compact('game', 'teamStats'));
+        return Inertia::render('Games/Show', [
+            'game' => [
+                'id' => $game->id,
+                'game_code' => $game->game_code,
+                'season_code' => $game->season_code,
+                'round' => $game->round,
+                'attendance' => $game->attendance,
+                'referees' => $game->referees,
+            ],
+            'teamStats' => $teamStats
+        ]);
     }
 
     public function players(Request $request)
@@ -93,7 +167,12 @@ class StatsController extends Controller
 
         $players = $query->paginate(50);
 
-        return view('stats.players', compact('players'));
+        return Inertia::render('Players/Index', [
+            'players' => $players,
+            'filters' => [
+                'search' => $request->search,
+            ]
+        ]);
     }
 
     public function player($id)
@@ -122,7 +201,32 @@ class StatsController extends Controller
             ->limit(10)
             ->get();
 
-        return view('stats.player', compact('player', 'stats', 'recentGames'));
+        return Inertia::render('Players/Show', [
+            'player' => [
+                'id' => $player->id,
+                'player_id' => $player->player_id,
+                'player_name' => $player->player_name,
+            ],
+            'stats' => $stats,
+            'recentGames' => $recentGames->map(fn ($stat) => [
+                'id' => $stat->id,
+                'game_id' => $stat->game->id,
+                'game' => [
+                    'game_code' => $stat->game->game_code,
+                    'season_code' => $stat->game->season_code,
+                ],
+                'team' => [
+                    'team_name' => $stat->team->team_name,
+                ],
+                'points' => $stat->points,
+                'total_rebounds' => $stat->total_rebounds,
+                'assists' => $stat->assists,
+                'steals' => $stat->steals,
+                'blocks_favor' => $stat->blocks_favor,
+                'minutes' => $stat->minutes,
+                'valuation' => $stat->valuation,
+            ])
+        ]);
     }
 
     public function teams(Request $request)
@@ -150,7 +254,12 @@ class StatsController extends Controller
 
         $teams = $query->paginate(30);
 
-        return view('stats.teams', compact('teams'));
+        return Inertia::render('Teams/Index', [
+            'teams' => $teams,
+            'filters' => [
+                'search' => $request->search,
+            ]
+        ]);
     }
 
     public function team($id)
@@ -176,7 +285,32 @@ class StatsController extends Controller
             ->limit(10)
             ->get();
 
-        return view('stats.team', compact('team', 'stats', 'recentGames'));
+        return Inertia::render('Teams/Show', [
+            'team' => [
+                'id' => $team->id,
+                'team_name' => $team->team_name,
+                'team_code' => $team->team_code,
+            ],
+            'stats' => $stats,
+            'recentGames' => $recentGames->map(fn ($stat) => [
+                'id' => $stat->id,
+                'game_id' => $stat->game->id,
+                'game' => [
+                    'game_code' => $stat->game->game_code,
+                    'season_code' => $stat->game->season_code,
+                ],
+                'total_points' => $stat->total_points,
+                'field_goals_made_2' => $stat->field_goals_made_2,
+                'field_goals_attempted_2' => $stat->field_goals_attempted_2,
+                'field_goals_made_3' => $stat->field_goals_made_3,
+                'field_goals_attempted_3' => $stat->field_goals_attempted_3,
+                'free_throws_made' => $stat->free_throws_made,
+                'free_throws_attempted' => $stat->free_throws_attempted,
+                'total_rebounds' => $stat->total_rebounds,
+                'assists' => $stat->assists,
+                'steals' => $stat->steals,
+            ])
+        ]);
     }
 
     public function statsVsPosition(Request $request)

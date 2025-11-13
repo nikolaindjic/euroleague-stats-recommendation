@@ -57,6 +57,11 @@ RUN composer install --optimize-autoloader --no-dev --no-interaction
 # Install Node dependencies and build assets
 RUN npm ci && npm run build && npm cache clean --force
 
+# Ensure manifest is in the correct location for Laravel (Vite 7 compatibility)
+RUN if [ -f public/build/.vite/manifest.json ]; then \
+        cp public/build/.vite/manifest.json public/build/manifest.json; \
+    fi
+
 # Create necessary directories and set permissions
 RUN mkdir -p /var/www/html/storage/framework/cache \
     /var/www/html/storage/framework/sessions \

@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', config('app.name', 'Euroleague Stats'))</title>
 
     <!-- Fonts -->
@@ -68,13 +69,8 @@
 
                 <!-- Dark Mode Toggle -->
                 <div class="flex items-center space-x-3">
-                    <!-- Sync Button -->
-                    <button id="sync-button" type="button" class="text-white bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-4 focus:ring-green-300 dark:focus:ring-green-800 rounded-lg text-sm px-3 py-2 transition-colors font-medium">
-                        <svg id="sync-icon" class="w-4 h-4 inline-block mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                        <span id="sync-text">Sync Data</span>
-                    </button>
+                    <!-- Sync Button (Vue Component) -->
+                    <div id="sync-button-app"></div>
 
                     <button id="theme-toggle" type="button" class="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-gray-700 rounded-lg text-sm p-2.5 transition-colors">
                         <svg id="theme-toggle-dark-icon" class="hidden w-5 h-5" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path></svg>
@@ -239,106 +235,117 @@
 
     <!-- Sync Script -->
     <script>
-        const syncButton = document.getElementById('sync-button');
-        const syncModal = document.getElementById('sync-modal');
-        const closeModal = document.getElementById('close-modal');
-        const cancelSync = document.getElementById('cancel-sync');
-        const confirmSync = document.getElementById('confirm-sync');
-        const syncStatus = document.getElementById('sync-status');
-        const syncProgress = document.getElementById('sync-progress');
-        const syncResults = document.getElementById('sync-results');
-        const syncError = document.getElementById('sync-error');
-        const syncIcon = document.getElementById('sync-icon');
-        const syncText = document.getElementById('sync-text');
+        document.addEventListener('DOMContentLoaded', function() {
+            const syncButton = document.getElementById('sync-button');
+            const syncModal = document.getElementById('sync-modal');
+            const closeModal = document.getElementById('close-modal');
+            const cancelSync = document.getElementById('cancel-sync');
+            const confirmSync = document.getElementById('confirm-sync');
+            const syncStatus = document.getElementById('sync-status');
+            const syncProgress = document.getElementById('sync-progress');
+            const syncResults = document.getElementById('sync-results');
+            const syncError = document.getElementById('sync-error');
+            const syncIcon = document.getElementById('sync-icon');
+            const syncText = document.getElementById('sync-text');
 
-        // Open modal
-        syncButton.addEventListener('click', function() {
-            syncModal.classList.remove('hidden');
-            resetModal();
-        });
+            console.log('Sync button:', syncButton);
+            console.log('Sync modal:', syncModal);
 
-        // Close modal
-        closeModal.addEventListener('click', closeModalHandler);
-        cancelSync.addEventListener('click', closeModalHandler);
+            if (!syncButton || !syncModal) {
+                console.error('Sync button or modal not found!');
+                return;
+            }
 
-        function closeModalHandler() {
-            syncModal.classList.add('hidden');
-        }
+            // Open modal
+            syncButton.addEventListener('click', function() {
+                console.log('Sync button clicked!');
+                syncModal.classList.remove('hidden');
+                resetModal();
+            });
 
-        function resetModal() {
-            syncStatus.classList.remove('hidden');
-            syncProgress.classList.add('hidden');
-            syncResults.classList.add('hidden');
-            syncError.classList.add('hidden');
-            confirmSync.classList.remove('hidden');
-            cancelSync.classList.remove('hidden');
-        }
+            // Close modal
+            closeModal.addEventListener('click', closeModalHandler);
+            cancelSync.addEventListener('click', closeModalHandler);
 
-        // Start sync
-        confirmSync.addEventListener('click', async function() {
-            syncStatus.classList.add('hidden');
-            syncProgress.classList.remove('hidden');
-            confirmSync.classList.add('hidden');
-            cancelSync.textContent = 'Please Wait...';
-            cancelSync.disabled = true;
+            function closeModalHandler() {
+                syncModal.classList.add('hidden');
+            }
 
-            // Add spinning animation to header button
-            syncIcon.classList.add('animate-spin');
-
-            try {
-                const response = await fetch('{{ route('stats.sync') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    }
-                });
-
-                const data = await response.json();
-
+            function resetModal() {
+                syncStatus.classList.remove('hidden');
                 syncProgress.classList.add('hidden');
-                syncIcon.classList.remove('animate-spin');
+                syncResults.classList.add('hidden');
+                syncError.classList.add('hidden');
+                confirmSync.classList.remove('hidden');
+                cancelSync.classList.remove('hidden');
+            }
 
-                if (data.success) {
-                    syncResults.classList.remove('hidden');
+            // Start sync
+            confirmSync.addEventListener('click', async function() {
+                syncStatus.classList.add('hidden');
+                syncProgress.classList.remove('hidden');
+                confirmSync.classList.add('hidden');
+                cancelSync.textContent = 'Please Wait...';
+                cancelSync.disabled = true;
 
-                    // Display results
-                    const details = document.getElementById('sync-details');
-                    details.innerHTML = `
-                        <p><strong>Schedule:</strong> ${data.results.schedule.created} created, ${data.results.schedule.skipped} skipped</p>
-                        <p><strong>Games:</strong> ${data.results.games.success} synced, ${data.results.games.failed} failed</p>
-                        <p><strong>Positions:</strong> ${data.results.positions.updated} updated</p>
-                    `;
+                // Add spinning animation to header button
+                syncIcon.classList.add('animate-spin');
 
-                    cancelSync.textContent = 'Close';
-                    cancelSync.disabled = false;
+                try {
+                    const response = await fetch('{{ route('stats.sync') }}', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        }
+                    });
 
-                    // Update button text temporarily
-                    syncText.textContent = 'Synced!';
-                    setTimeout(() => {
-                        syncText.textContent = 'Sync Data';
-                    }, 3000);
-                } else {
+                    const data = await response.json();
+
+                    syncProgress.classList.add('hidden');
+                    syncIcon.classList.remove('animate-spin');
+
+                    if (data.success) {
+                        syncResults.classList.remove('hidden');
+
+                        // Display results
+                        const details = document.getElementById('sync-details');
+                        details.innerHTML = `
+                            <p><strong>Schedule:</strong> ${data.results.schedule.created} created, ${data.results.schedule.skipped} skipped</p>
+                            <p><strong>Games:</strong> ${data.results.games.success} synced, ${data.results.games.failed} failed</p>
+                            <p><strong>Positions:</strong> ${data.results.positions.updated} updated</p>
+                        `;
+
+                        cancelSync.textContent = 'Close';
+                        cancelSync.disabled = false;
+
+                        // Update button text temporarily
+                        syncText.textContent = 'Synced!';
+                        setTimeout(() => {
+                            syncText.textContent = 'Sync Data';
+                        }, 3000);
+                    } else {
+                        syncError.classList.remove('hidden');
+                        document.getElementById('error-message').textContent = data.message;
+                        cancelSync.textContent = 'Close';
+                        cancelSync.disabled = false;
+                    }
+                } catch (error) {
+                    syncProgress.classList.add('hidden');
                     syncError.classList.remove('hidden');
-                    document.getElementById('error-message').textContent = data.message;
+                    syncIcon.classList.remove('animate-spin');
+                    document.getElementById('error-message').textContent = 'Network error: ' + error.message;
                     cancelSync.textContent = 'Close';
                     cancelSync.disabled = false;
                 }
-            } catch (error) {
-                syncProgress.classList.add('hidden');
-                syncError.classList.remove('hidden');
-                syncIcon.classList.remove('animate-spin');
-                document.getElementById('error-message').textContent = 'Network error: ' + error.message;
-                cancelSync.textContent = 'Close';
-                cancelSync.disabled = false;
-            }
-        });
+            });
 
-        // Close modal when clicking outside
-        syncModal.addEventListener('click', function(e) {
-            if (e.target === syncModal) {
-                closeModalHandler();
-            }
+            // Close modal when clicking outside
+            syncModal.addEventListener('click', function(e) {
+                if (e.target === syncModal) {
+                    closeModalHandler();
+                }
+            });
         });
     </script>
 

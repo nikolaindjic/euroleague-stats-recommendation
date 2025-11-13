@@ -3,11 +3,13 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && npm run postbuild",
+        "postbuild": "node -e \"require('fs').copyFileSync('public/build/.vite/manifest.json', 'public/build/manifest.json')\"",
         "dev": "vite"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
+        "@vitejs/plugin-vue": "^6.0.1",
         "axios": "^1.11.0",
         "concurrently": "^9.0.1",
         "laravel-vite-plugin": "^2.0.0",
